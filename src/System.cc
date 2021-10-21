@@ -20,14 +20,33 @@
 
 
 
-#include "System.h"
-#include "Converter.h"
-#include <thread>
+#include "System.h"   // IWYU pragma: associated
+
 #include <pangolin/pangolin.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <thread>
 #include <iomanip>
+#include <algorithm>
+#include <iostream>
+#include <list>
+#include <cmath>
+
+#include "Converter.h"
+#include "Frame.h"
+#include "FrameDrawer.h"
+#include "KeyFrame.h"
+#include "KeyFrameDatabase.h"
+#include "LocalMapping.h"
+#include "LoopClosing.h"
+#include "Map.h"
+#include "MapDrawer.h"
+#include "Tracking.h"
+#include "Viewer.h"
 
 namespace ORB_SLAM2
 {
+class MapPoint;
 
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
                const bool bUseViewer):mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false),mbActivateLocalizationMode(false),
@@ -343,18 +362,12 @@ void System::SaveTrajectoryTUM(const string &filename)
     // We need to get first the keyframe pose and then concatenate the relative transformation.
     // Frames not localized (tracking failure) are not saved.
 
-    // For each frame we have a reference keyframe (lRit), the timestamp (lT) and a flag
-    // which is true when tracking failed (lbL).
-    list<ORB_SLAM2::KeyFrame*>::iterator lRit = mpTracker->mlpReferences.begin();
-    list<double>::iterator lT = mpTracker->mlFrameTimes.begin();
-    list<bool>::iterator lbL = mpTracker->mlbLost.begin();
-    for(list<cv::Mat>::iterator lit=mpTracker->mlRelativeFramePoses.begin(),
-        lend=mpTracker->mlRelativeFramePoses.end();lit!=lend;lit++, lRit++, lT++, lbL++)
+    for (list<Tracking::TrackedFrame>::iterator iter = mpTracker->tracked_frames.begin(), iter_end = mpTracker->tracked_frames.end(); iter != iter_end; iter++)
     {
-        if(*lbL)
+        if(iter->lost)
             continue;
 
-        KeyFrame* pKF = *lRit;
+        KeyFrame* pKF = iter->reference_keyframe;
 
         cv::Mat Trw = cv::Mat::eye(4,4,CV_32F);
 
@@ -367,13 +380,13 @@ void System::SaveTrajectoryTUM(const string &filename)
 
         Trw = Trw*pKF->GetPose()*Two;
 
-        cv::Mat Tcw = (*lit)*Trw;
+        cv::Mat Tcw = iter->relative_frame_pose*Trw;
         cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
         cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);
 
         vector<float> q = Converter::toQuaternion(Rwc);
 
-        f << setprecision(6) << *lT << " " <<  setprecision(9) << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+        f << setprecision(6) << iter->time << " " <<  setprecision(9) << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
     }
     f.close();
     cout << endl << "trajectory saved!" << endl;
@@ -440,13 +453,9 @@ void System::SaveTrajectoryKITTI(const string &filename)
     // We need to get first the keyframe pose and then concatenate the relative transformation.
     // Frames not localized (tracking failure) are not saved.
 
-    // For each frame we have a reference keyframe (lRit), the timestamp (lT) and a flag
-    // which is true when tracking failed (lbL).
-    list<ORB_SLAM2::KeyFrame*>::iterator lRit = mpTracker->mlpReferences.begin();
-    list<double>::iterator lT = mpTracker->mlFrameTimes.begin();
-    for(list<cv::Mat>::iterator lit=mpTracker->mlRelativeFramePoses.begin(), lend=mpTracker->mlRelativeFramePoses.end();lit!=lend;lit++, lRit++, lT++)
+    for (list<Tracking::TrackedFrame>::iterator iter = mpTracker->tracked_frames.begin(), iter_end = mpTracker->tracked_frames.end(); iter != iter_end; iter++)
     {
-        ORB_SLAM2::KeyFrame* pKF = *lRit;
+        ORB_SLAM2::KeyFrame* pKF = iter->reference_keyframe;
 
         cv::Mat Trw = cv::Mat::eye(4,4,CV_32F);
 
@@ -459,7 +468,7 @@ void System::SaveTrajectoryKITTI(const string &filename)
 
         Trw = Trw*pKF->GetPose()*Two;
 
-        cv::Mat Tcw = (*lit)*Trw;
+        cv::Mat Tcw = iter->relative_frame_pose*Trw;
         cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
         cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);
 
@@ -483,10 +492,158 @@ vector<MapPoint*> System::GetTrackedMapPoints()
     return mTrackedMapPoints;
 }
 
+vector<cv::Mat> System::GetTrackedMapPoints_progresslabeler()
+{
+    std::vector<cv::Mat> pointloc;
+    std::vector<MapPoint*> mpPoint;
+    std::vector<KeyFrame*> mpKeyframe;
+    mpPoint = mpMap->GetAllMapPoints();
+    mpKeyframe = mpMap->GetAllKeyFrames();
+    
+    for (auto& p : mpPoint){
+        pointloc.push_back(p->GetWorldPos());
+        // std::map<KeyFrame*,size_t> mObservations;
+        // cout << "PointId: " << p->mnId << endl;
+        // mObservations = p->GetObservations();
+        // for (auto& data : mObservations){
+        //     KeyFrame* keyframe = data.first;
+        //     size_t index = data.second;
+        //     cout << "FrameId: " << keyframe->mnFrameId << " timestamp: " << keyframe->mTimeStamp<< endl;
+            
+        // }
+        // cout << endl << endl << endl;
+    }
+    return pointloc;
+}
+
 vector<cv::KeyPoint> System::GetTrackedKeyPointsUn()
 {
     unique_lock<mutex> lock(mMutexState);
     return mTrackedKeyPointsUn;
 }
 
+void System::SaveCameraFeature_progresslabeler(const string &filename, vector<string> images){
+    ofstream f;
+    f.open(filename.c_str());
+    f << fixed;
+    f << "# Image list with two lines of data per image:" << endl;
+    f << "#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME" << endl;
+    f << "#   POINTS2D[] as (X, Y, POINT3D_ID)" << endl;
+    cv::Mat Trans = cv::Mat::eye(4,4,CV_32F);
+    std::vector<KeyFrame*> mpKeyframe = mpMap->GetAllKeyFrames();
+    for (auto& kf : mpKeyframe){
+
+        cv::Mat Tcw = kf->GetPose();
+        cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
+        cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);       
+
+        cv::Mat intrinsic = (cv::Mat_<float>(3,3) << kf->fx, 0, kf->cx, 
+                                                     0, kf->fy, kf->cy, 
+                                                     0, 0, 1);
+        cv::Mat pose = Tcw(cv::Range(0, 3), cv::Range(0, 4));
+        
+
+        std::vector<float> q = Converter::toQuaternion(Rwc);
+        std::string imagename = images[kf->mnFrameId];
+        f << kf->mnFrameId + 1 << " " 
+          << q[3] << " " << q[0] << " " << q[1] << " " << q[2] << " " 
+          << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) 
+          << " 1 " << imagename.substr(4, images[kf->mnFrameId].length() - 1)<< endl;
+        for(auto& kp : kf->GetMapPoints()){
+            cv::Mat loc = kp->GetWorldPos();
+            cv::Mat one = cv::Mat::ones(1, 1, CV_32F);
+            loc.push_back(one);
+            cv::Mat pixel = intrinsic * pose * loc;
+            // cout << pixel.at<float>(0)/pixel.at<float>(2) << " " << pixel.at<float>(1)/pixel.at<float>(2) << endl;
+            f << pixel.at<float>(0)/pixel.at<float>(2) << " " << pixel.at<float>(1)/pixel.at<float>(2) << " " << kp->mnId << " ";
+        }
+        f << endl;
+    }
+}
+
+void System::SaveFeature3D_progresslabeler(const string &filename){
+    ofstream f;
+    f.open(filename.c_str());
+    f << fixed;
+    f << "# 3D point list with one line of data per point:" << endl;
+    f << "#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)" << endl;
+    std::vector<MapPoint*> mpPoint;
+    mpPoint = mpMap->GetAllMapPoints();    
+    for (auto& p : mpPoint){
+        cv::Mat pointloc = p->GetWorldPos();
+        f << p->mnId << " " << pointloc.at<float>(0) << " " << pointloc.at<float>(1) << " " << pointloc.at<float>(2)
+          << " 255 0 0 0 ";
+        std::map<KeyFrame*,size_t> mObservations;
+        mObservations = p->GetObservations();
+        for (auto& data : mObservations){
+            KeyFrame* keyframe = data.first;
+            size_t index = data.second;
+            f << keyframe->mnFrameId + 1 << " " << index << " " ;
+        }
+        f << endl;
+    }    
+}
+
+void System::SaveTrajectory_progresslabeler(const string &filename, vector<string> images, vector<double> timestamps, int frequence)
+{
+    cout << endl << "Saving camera trajectory to " << filename << " ..." << endl;
+    if(mSensor==MONOCULAR)
+    {
+        cerr << "ERROR: SaveTrajectoryTUM cannot be used for monocular." << endl;
+        return;
+    }
+
+    vector<KeyFrame*> vpKFs = mpMap->GetAllKeyFrames();
+    sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
+
+    // Transform all keyframes so that the first keyframe is at the origin.
+    // After a loop closure the first keyframe might not be at the origin.
+    // cv::Mat Two = vpKFs[0]->GetPoseInverse();
+
+    ofstream f;
+    f.open(filename.c_str());
+    f << fixed;
+    f << "# IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME" << endl;
+    f << endl;
+
+    // Frame pose is stored relative to its reference keyframe (which is optimized by BA and pose graph).
+    // We need to get first the keyframe pose and then concatenate the relative transformation.
+    // Frames not localized (tracking failure) are not saved.
+
+    for (list<Tracking::TrackedFrame>::iterator iter = mpTracker->tracked_frames.begin(), iter_end = mpTracker->tracked_frames.end(); iter != iter_end; iter++)
+    {
+        if(iter->lost)
+            continue;
+
+        KeyFrame* pKF = iter->reference_keyframe;
+
+        cv::Mat Trw = cv::Mat::eye(4,4,CV_32F);
+
+        // If the reference keyframe was culled, traverse the spanning tree to get a suitable keyframe.
+        while(pKF->isBad())
+        {
+            Trw = Trw*pKF->mTcp;
+            pKF = pKF->GetParent();
+        }
+
+        // Trw = Trw*pKF->GetPose()*Two;
+        Trw = Trw*pKF->GetPose();
+
+        cv::Mat Tcw = iter->relative_frame_pose*Trw;
+        cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
+        cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);
+
+        vector<float> q = Converter::toQuaternion(Rwc);
+        string image_name = images[int(round(iter->time * frequence)) - 1];
+        f << int(round(iter->time * frequence)) << " " <<  setprecision(9)  
+                << q[3] << " " << q[0] << " " << q[1] << " " << q[2] << " " 
+                << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) 
+                << " " << image_name.substr(4, image_name.length() - 1) << endl;
+    }
+    f.close();
+    cout << endl << "trajectory saved!" << endl;
+}
+
 } //namespace ORB_SLAM
+
+

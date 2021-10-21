@@ -112,6 +112,9 @@ public:
     // See format details at: http://www.cvlibs.net/datasets/kitti/eval_odometry.php
     void SaveTrajectoryKITTI(const string &filename);
 
+    void SaveTrajectory_progresslabeler(const string &filename, vector<string> images, vector<double> timestamps, int frequence);
+    void SaveCameraFeature_progresslabeler(const string &filename, vector<string> images);
+    void SaveFeature3D_progresslabeler(const string &filename);
     // TODO: Save/Load functions
     // SaveMap(const string &filename);
     // LoadMap(const string &filename);
@@ -121,6 +124,7 @@ public:
     int GetTrackingState();
     std::vector<MapPoint*> GetTrackedMapPoints();
     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
+    std::vector<cv::Mat> GetTrackedMapPoints_progresslabeler();
 
 private:
 
