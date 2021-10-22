@@ -58,7 +58,7 @@ int main(int argc, char **argv)
     }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::RGBD,true);
+    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::RGBD,false);
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;
@@ -91,6 +91,7 @@ int main(int argc, char **argv)
 #endif
 
         // Pass the image to the SLAM system
+        cout << "Tracking " << string(argv[3]) << "/" << vstrImageFilenamesRGB[ni] << " frame\n" << endl;
         SLAM.TrackRGBD(imRGB,imD,tframe);
 
 #ifdef COMPILEDWITHC11
@@ -132,7 +133,7 @@ int main(int argc, char **argv)
     string recon_path = string(argv[5]);
     // SLAM.SaveTrajectoryTUM(recon_path + "/CameraTrajectory.txt");
     // SLAM.SaveKeyFrameTrajectoryTUM(recon_path + "/KeyFrameTrajectory.txt");  
-    SLAM.SaveTrajectory_progresslabeler(recon_path + "/campose.txt", vstrImageFilenamesRGB, vTimestamps, std::stoi(string(argv[6])));
+    SLAM.SaveTrajectory_progresslabeler(recon_path + "/campose.txt", vstrImageFilenamesRGB, vTimestamps, std::stof(string(argv[6])));
     std::vector<cv::Mat> mapping_points;
     mapping_points = SLAM.GetTrackedMapPoints_progresslabeler();
     savePly(recon_path, mapping_points);

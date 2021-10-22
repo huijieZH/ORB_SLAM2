@@ -584,7 +584,7 @@ void System::SaveFeature3D_progresslabeler(const string &filename){
     }    
 }
 
-void System::SaveTrajectory_progresslabeler(const string &filename, vector<string> images, vector<double> timestamps, int frequence)
+void System::SaveTrajectory_progresslabeler(const string &filename, vector<string> images, vector<double> timestamps, float frequence)
 {
     cout << endl << "Saving camera trajectory to " << filename << " ..." << endl;
     if(mSensor==MONOCULAR)
