@@ -10,22 +10,34 @@
 #include<System.h>
 #include<MapPoint.h>
 
-#include <pcl/io/pcd_io.h>
-#include <pcl/point_types.h>
+// #include <pcl/io/pcd_io.h>
+// #include <pcl/point_types.h>
 
-#include <pcl/common/common_headers.h>
-#include <pcl/features/normal_3d.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/io/ply_io.h>
-#include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/console/parse.h>
+// #include <pcl/common/common_headers.h>
+// #include <pcl/features/normal_3d.h>
+// #include <pcl/io/pcd_io.h>
+// #include <pcl/io/ply_io.h>
+// #include <pcl/visualization/pcl_visualizer.h>
+// #include <pcl/console/parse.h>
 
 using namespace std;
+
+struct Point_3D
+{
+    int u, v;
+    float x, y, z;
+    vector<int> ind_vis_views;
+};
+
+struct Face
+{
+    long inds[3];
+};
 
 void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageFilenamesRGB,
                 vector<string> &vstrImageFilenamesD, vector<double> &vTimestamps);
 
-void savePly(const string &strreconpath, const std::vector<cv::Mat> points);
+void savePly(const string &path, const std::vector<cv::Mat> points);
 
 int main(int argc, char **argv)
 {
@@ -136,27 +148,43 @@ int main(int argc, char **argv)
     SLAM.SaveTrajectory_progresslabeler(recon_path + "/campose.txt", vstrImageFilenamesRGB, vTimestamps, std::stof(string(argv[6])));
     std::vector<cv::Mat> mapping_points;
     mapping_points = SLAM.GetTrackedMapPoints_progresslabeler();
-    savePly(recon_path, mapping_points);
+    // savePly(recon_path, mapping_points);
     SLAM.SaveCameraFeature_progresslabeler(recon_path + "/images.txt", vstrImageFilenamesRGB);
     SLAM.SaveFeature3D_progresslabeler(recon_path + "/points3D.txt");
     return 0;
 }
 
-void savePly(const string &strreconpath, const std::vector<cv::Mat> points){
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr newcloudPtr(new pcl::PointCloud<pcl::PointXYZRGB>);
-    for(auto p:points){
-        pcl::PointXYZRGB point;
-        point.x = p.at<float>(0);
-        point.y = p.at<float>(1);
-        point.z = p.at<float>(2);
-        std::uint32_t rgb = (static_cast<std::uint32_t>(255) << 16 |
-                static_cast<std::uint32_t>(0) << 8 | static_cast<std::uint32_t>(0));
-        point.rgb = *reinterpret_cast<float*>(&rgb);
-        newcloudPtr->points.push_back(point);        
+void savePly(const string &path, const std::vector<cv::Mat> points) {
+    ofstream f(path + "/fused.ply");
+    f << "ply\n"
+        << "format ascii 1.0\n"
+        << "element vertex " << points.size() << "\n"
+        << "property float x\n"
+        << "property float y\n"
+        << "property float z\n"
+        << "end_header\n";
+    for (auto p : points)
+    {
+        f << p.at<float>(0) << " " << p.at<float>(1) << " " << p.at<float>(2) << "\n";
     }
-    pcl::io::savePLYFileBinary(strreconpath + "/fused.ply", *newcloudPtr);
-    cout << "successfully save fused.ply" << endl;
+    f.close();
 }
+
+// void savePly(const string &strreconpath, const std::vector<cv::Mat> points){
+//     pcl::PointCloud<pcl::PointXYZRGB>::Ptr newcloudPtr(new pcl::PointCloud<pcl::PointXYZRGB>);
+//     for(auto p:points){
+//         pcl::PointXYZRGB point;
+//         point.x = p.at<float>(0);
+//         point.y = p.at<float>(1);
+//         point.z = p.at<float>(2);
+//         std::uint32_t rgb = (static_cast<std::uint32_t>(255) << 16 |
+//                 static_cast<std::uint32_t>(0) << 8 | static_cast<std::uint32_t>(0));
+//         point.rgb = *reinterpret_cast<float*>(&rgb);
+//         newcloudPtr->points.push_back(point);        
+//     }
+//     pcl::io::savePLYFileBinary(strreconpath + "/fused.ply", *newcloudPtr);
+//     cout << "successfully save fused.ply" << endl;
+// }
 
 void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageFilenamesRGB,
                 vector<string> &vstrImageFilenamesD, vector<double> &vTimestamps)
